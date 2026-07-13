@@ -61,3 +61,6 @@ insightface/
 # Secrets / local config
 .env
 *.local.yaml
+
+# Local planning / scratch (never publish)
+local_dev/
