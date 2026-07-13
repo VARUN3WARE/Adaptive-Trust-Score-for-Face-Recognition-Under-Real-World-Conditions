@@ -76,15 +76,6 @@ Outputs land in `results/figures/` and `results/metrics/`.
 - Risk-Coverage curve (accuracy vs fraction retained)
 - FAR / FRR / EER of the trust accept/reject decision
 
-## Status
-
-- [x] Project scaffold
-- [x] Data corruption module
-- [x] Quality feature extraction + ArcFace (InsightFace)
-- [x] Face recognition pipeline with trust gating
-- [x] Trust predictor (RF / XGBoost / MLP)
-- [x] Biometric evaluation suite + CLI scripts
-- [ ] End-to-end run on LFW / CelebA subset with published numbers
 
 ## License
 
