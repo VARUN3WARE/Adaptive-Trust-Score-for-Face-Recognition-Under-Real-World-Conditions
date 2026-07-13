@@ -1,0 +1,42 @@
+# Default experiment configuration for Adaptive Trust Score
+# Override via CLI flags in scripts/ as they are added.
+
+dataset:
+  name: lfw
+  raw_dir: data/raw/lfw
+  corrupted_dir: data/corrupted/lfw
+  image_extensions: [".jpg", ".jpeg", ".png"]
+
+corruption:
+  # Probabilities / severity ranges used by scripts/generate_corrupted_dataset.py
+  blur_kernel_sizes: [3, 5, 7, 9, 11]
+  jpeg_qualities: [10, 20, 30, 40, 50]
+  brightness_factors: [0.2, 0.35, 0.5, 0.65]
+  noise_stds: [10, 20, 30, 40]
+  rain_densities: [0.01, 0.02, 0.04]
+  fog_alphas: [0.3, 0.5, 0.7]
+  # Fraction of images that remain pristine in the corrupted split
+  keep_pristine_ratio: 0.15
+
+face:
+  model_name: buffalo_l  # InsightFace pack (RetinaFace + ArcFace)
+  det_size: [640, 640]
+  similarity_threshold: 0.35
+
+trust:
+  model_type: xgboost  # random_forest | xgboost | mlp
+  features:
+    - blur_laplacian_var
+    - brightness
+    - contrast
+    - yaw
+    - pitch
+    - roll
+    - face_size_ratio
+    - det_score
+    - entropy
+  reject_threshold: 0.5
+
+evaluation:
+  results_dir: results
+  risk_coverage_steps: 50

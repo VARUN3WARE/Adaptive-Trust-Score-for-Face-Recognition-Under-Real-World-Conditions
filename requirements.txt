@@ -1,0 +1,27 @@
+# Core scientific stack
+numpy>=1.24,<2.0
+opencv-python-headless>=4.8
+Pillow>=10.0
+scipy>=1.11
+scikit-image>=0.22
+scikit-learn>=1.3
+matplotlib>=3.8
+seaborn>=0.13
+pandas>=2.0
+tqdm>=4.66
+PyYAML>=6.0
+
+# Face recognition (RetinaFace + ArcFace)
+insightface>=0.7.3
+onnxruntime>=1.16
+
+# Trust predictor options
+xgboost>=2.0
+joblib>=1.3
+
+# Optional: DeepFace as an alternate backend (heavier)
+# deepface>=0.0.90
+
+# Notebooks / analysis
+jupyter>=1.0
+ipykernel>=6.25
