@@ -20,33 +20,26 @@ Face recognition systems (e.g. ArcFace) often remain overconfident on blurry, po
 
 ```
 .
-├── configs/                 # Experiment hyperparameters
-├── data/
-│   ├── raw/                 # Pristine LFW / CelebA (gitignored)
-│   ├── corrupted/           # Artificially degraded images (gitignored)
-│   ├── embeddings/          # Cached ArcFace embeddings (gitignored)
-│   └── features/            # Quality feature tables (gitignored)
-├── models/                  # Trained trust predictors
-├── notebooks/               # Exploratory analysis
-├── results/                 # Metrics, Risk-Coverage curves
-├── scripts/                 # CLI entrypoints for each experiment stage
+├── configs/default.yaml
+├── data/{raw,corrupted,embeddings,features}/
+├── models/
+├── notebooks/
+├── results/{figures,metrics}/
+├── scripts/
+│   ├── generate_corrupted_dataset.py
+│   ├── build_trust_labels.py
+│   ├── train_trust_module.py
+│   └── evaluate.py
 ├── src/
-│   ├── data_corruption.py   # Gaussian blur, JPEG, rain/fog, low-light, noise
+│   ├── data_corruption.py
 │   ├── feature_extraction.py
 │   ├── face_pipeline.py
 │   ├── trust_predictor.py
-│   └── evaluation.py
+│   ├── evaluation.py
+│   └── utils.py
 ├── requirements.txt
 └── README.md
 ```
-
-## Experimental Protocol
-
-1. Start from LFW (or a CelebA subset).
-2. Corrupt images (blur, JPEG, rain/fog, low light, Gaussian noise).
-3. Run ArcFace on pristine + corrupted pairs; label `1` if prediction matches ground truth, else `0`.
-4. Train a Random Forest / XGBoost / small MLP on quality features → Trust Score.
-5. Evaluate like a biometrics paper: accuracy, Risk-Coverage, FAR / FRR / EER.
 
 ## Setup
 
@@ -56,13 +49,42 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+Place LFW (identity subfolders) under `data/raw/lfw/`.
+
+## Experiment Workflow
+
+```bash
+# 1) Artificially degrade images (blur, JPEG, rain/fog, low-light, noise)
+python scripts/generate_corrupted_dataset.py
+
+# 2) Run ArcFace, extract quality features, label correct/incorrect
+python scripts/build_trust_labels.py --ctx-id -1   # CPU; use 0 for GPU
+
+# 3) Train Trust Score classifier (xgboost | random_forest | mlp)
+python scripts/train_trust_module.py --model-type xgboost
+
+# 4) Biometric evaluation: Risk-Coverage, FAR/FRR/EER
+python scripts/evaluate.py
+```
+
+Outputs land in `results/figures/` and `results/metrics/`.
+
+## Evaluation Metrics
+
+- ArcFace accuracy on the corrupted set (baseline)
+- ArcFace + Trust gating accuracy on the accepted subset
+- Risk-Coverage curve (accuracy vs fraction retained)
+- FAR / FRR / EER of the trust accept/reject decision
+
 ## Status
 
 - [x] Project scaffold
 - [x] Data corruption module
-- [ ] Quality feature extraction + ArcFace integration
-- [ ] Trust predictor training
-- [ ] Biometric evaluation (Risk-Coverage, FAR/FRR/EER)
+- [x] Quality feature extraction + ArcFace (InsightFace)
+- [x] Face recognition pipeline with trust gating
+- [x] Trust predictor (RF / XGBoost / MLP)
+- [x] Biometric evaluation suite + CLI scripts
+- [ ] End-to-end run on LFW / CelebA subset with published numbers
 
 ## License
 
