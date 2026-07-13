@@ -340,7 +340,9 @@ def apply_random_corruption(
     if include_none:
         types = list(types) + [CorruptionType.NONE]
 
-    chosen = CorruptionType(rng.choice(types))
+    # Index into the list — numpy choice() mangles str-Enum members into
+    # invalid values like "CorruptionType.F".
+    chosen = types[int(rng.integers(0, len(types)))]
     params = random_corruption_params(chosen, rng=rng)
     out = apply_corruption(image, chosen, **params)
     return out, chosen, params
