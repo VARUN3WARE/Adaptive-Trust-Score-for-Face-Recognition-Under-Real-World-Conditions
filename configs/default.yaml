@@ -3,8 +3,10 @@
 
 dataset:
   name: lfw
-  raw_dir: data/raw/lfw
-  corrupted_dir: data/corrupted/lfw
+  # Kaggle LFW deepfunneled layout:
+  # data/raw/lfw-deepfunneled/lfw-deepfunneled/<identity>/*.jpg
+  raw_dir: data/raw/lfw-deepfunneled/lfw-deepfunneled
+  corrupted_dir: data/corrupted/lfw-deepfunneled
   image_extensions: [".jpg", ".jpeg", ".png"]
 
 corruption:

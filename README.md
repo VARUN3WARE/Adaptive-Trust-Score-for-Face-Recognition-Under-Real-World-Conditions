@@ -49,12 +49,26 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Place LFW (identity subfolders) under `data/raw/lfw/`.
+### Dataset layout (already configured)
+
+This repo expects the [Kaggle LFW dataset](https://www.kaggle.com/datasets/jessicali9530/lfw-dataset) extracted under `data/raw/`:
+
+```
+data/raw/
+  lfw-deepfunneled/lfw-deepfunneled/<Person_Name>/*.jpg
+  lfw_allnames.csv
+  pairs.csv
+  people.csv
+  ...
+```
+
+`configs/default.yaml` points `raw_dir` at `data/raw/lfw-deepfunneled/lfw-deepfunneled`.
 
 ## Experiment Workflow
 
 ```bash
 # 1) Artificially degrade images (blur, JPEG, rain/fog, low-light, noise)
+#    Full LFW (~13k images) can take a while; use --limit via a subset if needed.
 python scripts/generate_corrupted_dataset.py
 
 # 2) Run ArcFace, extract quality features, label correct/incorrect
