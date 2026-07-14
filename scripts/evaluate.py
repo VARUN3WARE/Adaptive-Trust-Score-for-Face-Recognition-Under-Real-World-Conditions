@@ -2,7 +2,7 @@
 """
 Evaluate ArcFace baseline vs ArcFace + Trust gating (biometrics metrics).
 
-Produces Risk-Coverage / FAR-FRR plots under results/.
+Produces Risk-Coverage, Error-vs-Reject (ERC), and FAR-FRR plots under results/.
 """
 
 from __future__ import annotations

@@ -1,14 +1,14 @@
 """
 Biometrics-style evaluation for ArcFace ± Trust Score gating.
 
-Reports accuracy, Risk-Coverage curves, FAR / FRR, and EER.
+Reports accuracy, Risk-Coverage curves, Error-vs-Reject (ERC), FAR / FRR, and EER.
 """
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Optional, Sequence
+from typing import Any, Optional, Sequence, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -152,6 +152,75 @@ def equal_error_rate(far_frr: pd.DataFrame) -> dict[str, float]:
     }
 
 
+def error_vs_reject_curve(
+    df: pd.DataFrame,
+    score_col: str = "trust_score",
+    prediction_col: str = "predicted_identity_raw",
+    gt_col: str = "ground_truth",
+    n_steps: int = 50,
+    reject_rates: Optional[Sequence[float]] = None,
+) -> pd.DataFrame:
+    """
+    Error-vs-Reject Curve (ERC) used in FIQA / NIST FRVT-QA style reporting.
+
+    Images are ranked by ``score_col`` (higher = more trusted). The lowest-
+    scoring fraction is rejected; error rate is computed on the remainder:
+
+    - reject_rate = fraction discarded
+    - error_rate  = 1 - accuracy on retained images
+    - fnmr_proxy  = same as error_rate for closed-set ID (fraction wrong among kept)
+    """
+    pred_col = prediction_col if prediction_col in df.columns else "predicted_identity"
+    data = df.dropna(subset=[gt_col, score_col]).copy()
+    if len(data) == 0:
+        return pd.DataFrame(
+            columns=["reject_rate", "coverage", "error_rate", "accuracy", "n_kept", "threshold"]
+        )
+
+    if reject_rates is None:
+        reject_rates = np.linspace(0.0, 0.9, n_steps)
+    else:
+        reject_rates = np.asarray(reject_rates, dtype=float)
+
+    scores = data[score_col].astype(float).to_numpy()
+    preds = data[pred_col].fillna("__none__").astype(str).to_numpy()
+    gts = data[gt_col].astype(str).to_numpy()
+    correct = preds == gts
+    n = len(data)
+    order = np.argsort(scores)  # lowest trust first → rejected first
+
+    rows = []
+    for rr in reject_rates:
+        rr = float(np.clip(rr, 0.0, 1.0))
+        n_reject = int(np.floor(rr * n))
+        if n_reject >= n:
+            rows.append(
+                {
+                    "reject_rate": rr,
+                    "coverage": 0.0,
+                    "error_rate": float("nan"),
+                    "accuracy": float("nan"),
+                    "n_kept": 0,
+                    "threshold": float(scores[order[-1]]) if n else float("nan"),
+                }
+            )
+            continue
+        keep_idx = order[n_reject:]
+        acc = float(correct[keep_idx].mean())
+        thr = float(scores[order[n_reject]]) if n_reject < n else float(scores.max())
+        rows.append(
+            {
+                "reject_rate": rr,
+                "coverage": float(len(keep_idx) / n),
+                "error_rate": 1.0 - acc,
+                "accuracy": acc,
+                "n_kept": int(len(keep_idx)),
+                "threshold": thr,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def plot_risk_coverage(
     curve: pd.DataFrame,
     output_path: PathLike,
@@ -170,6 +239,37 @@ def plot_risk_coverage(
     ax.set_xlim(0.0, 1.0)
     ax.set_ylim(0.0, 1.0)
     ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=160)
+    plt.close(fig)
+    return output_path
+
+
+def plot_error_vs_reject(
+    erc: pd.DataFrame,
+    output_path: PathLike,
+    title: str = "Error vs Reject Curve (ERC)",
+    extra_curves: Optional[dict[str, pd.DataFrame]] = None,
+) -> Path:
+    """Save an Error-vs-Reject plot (FIQA / NIST style)."""
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+    curves = {"Trust Score": erc}
+    if extra_curves:
+        curves.update(extra_curves)
+    for label, curve in curves.items():
+        ordered = curve.sort_values("reject_rate")
+        ax.plot(ordered["reject_rate"], ordered["error_rate"], lw=2, label=label)
+    ax.set_xlabel("Reject rate (fraction of images discarded)")
+    ax.set_ylabel("Error rate on retained images")
+    ax.set_title(title)
+    ax.set_xlim(0.0, 1.0)
+    ax.set_ylim(0.0, max(0.05, float(erc["error_rate"].dropna().max()) * 1.15 if len(erc) else 1.0))
+    ax.grid(True, alpha=0.3)
+    if len(curves) > 1:
+        ax.legend()
     fig.tight_layout()
     fig.savefig(output_path, dpi=160)
     plt.close(fig)
@@ -257,14 +357,27 @@ def evaluate_recognition_df(
         out_json.write_text(json.dumps(metrics, indent=2), encoding="utf-8")
         return metrics
 
-    curve = risk_coverage_curve(df, n_steps=n_steps)
-    far_frr = binary_far_frr(y_true, df["trust_score"].astype(float).fillna(0.0).to_numpy())
+    score_col = "trust_score"
+    pred_for_erc = (
+        "predicted_identity_raw" if "predicted_identity_raw" in df.columns else pred_col
+    )
+
+    curve = risk_coverage_curve(df, score_col=score_col, n_steps=n_steps)
+    erc = error_vs_reject_curve(
+        df,
+        score_col=score_col,
+        prediction_col=pred_for_erc,
+        n_steps=n_steps,
+    )
+    far_frr = binary_far_frr(y_true, df[score_col].astype(float).fillna(0.0).to_numpy())
     eer = equal_error_rate(far_frr)
 
     rc_path = plot_risk_coverage(curve, fig_dir / f"{prefix}_risk_coverage.png")
+    erc_path = plot_error_vs_reject(erc, fig_dir / f"{prefix}_erc.png")
     far_path = plot_far_frr(far_frr, eer, fig_dir / f"{prefix}_far_frr.png")
 
     curve.to_csv(met_dir / f"{prefix}_risk_coverage.csv", index=False)
+    erc.to_csv(met_dir / f"{prefix}_erc.csv", index=False)
     far_frr.to_csv(met_dir / f"{prefix}_far_frr.csv", index=False)
 
     metrics: dict[str, Any] = {
@@ -273,6 +386,7 @@ def evaluate_recognition_df(
         "EER": eer,
         "n_samples": int(len(df)),
         "risk_coverage_plot": str(rc_path),
+        "erc_plot": str(erc_path),
         "far_frr_plot": str(far_path),
     }
     out_json = met_dir / f"{prefix}_metrics.json"
