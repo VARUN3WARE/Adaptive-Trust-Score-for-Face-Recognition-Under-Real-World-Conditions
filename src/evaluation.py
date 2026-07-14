@@ -221,6 +221,35 @@ def error_vs_reject_curve(
     return pd.DataFrame(rows)
 
 
+def metrics_at_reject_rates(
+    df: pd.DataFrame,
+    score_col: str = "trust_score",
+    prediction_col: str = "predicted_identity_raw",
+    gt_col: str = "ground_truth",
+    reject_rates: Sequence[float] = (0.10, 0.20, 0.30, 0.40),
+) -> dict[str, dict[str, float]]:
+    """Accuracy / error at fixed reject rates for paper tables."""
+    erc = error_vs_reject_curve(
+        df,
+        score_col=score_col,
+        prediction_col=prediction_col,
+        gt_col=gt_col,
+        reject_rates=reject_rates,
+    )
+    out: dict[str, dict[str, float]] = {}
+    for _, row in erc.iterrows():
+        key = f"{int(round(row['reject_rate'] * 100))}%"
+        out[key] = {
+            "reject_rate": float(row["reject_rate"]),
+            "coverage": float(row["coverage"]),
+            "accuracy": float(row["accuracy"]) if pd.notna(row["accuracy"]) else float("nan"),
+            "error_rate": float(row["error_rate"]) if pd.notna(row["error_rate"]) else float("nan"),
+            "n_kept": float(row["n_kept"]),
+            "threshold": float(row["threshold"]) if pd.notna(row["threshold"]) else float("nan"),
+        }
+    return out
+
+
 def plot_risk_coverage(
     curve: pd.DataFrame,
     output_path: PathLike,
