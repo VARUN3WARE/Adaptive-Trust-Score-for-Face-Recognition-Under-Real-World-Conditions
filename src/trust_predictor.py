@@ -24,7 +24,11 @@ from .utils import PathLike
 ModelType = Literal["random_forest", "xgboost", "mlp"]
 
 
-def _make_estimator(model_type: ModelType, random_state: int = 42) -> Any:
+def _make_estimator(
+    model_type: ModelType,
+    random_state: int = 42,
+    scale_pos_weight: Optional[float] = None,
+) -> Any:
     if model_type == "random_forest":
         return RandomForestClassifier(
             n_estimators=300,
@@ -58,7 +62,7 @@ def _make_estimator(model_type: ModelType, random_state: int = 42) -> Any:
                 "xgboost is required for model_type='xgboost'. "
                 "Install with: pip install xgboost"
             ) from exc
-        return XGBClassifier(
+        kwargs: dict[str, Any] = dict(
             n_estimators=300,
             max_depth=6,
             learning_rate=0.05,
@@ -70,6 +74,9 @@ def _make_estimator(model_type: ModelType, random_state: int = 42) -> Any:
             random_state=random_state,
             tree_method="hist",
         )
+        if scale_pos_weight is not None:
+            kwargs["scale_pos_weight"] = float(scale_pos_weight)
+        return XGBClassifier(**kwargs)
     raise ValueError(f"Unknown model_type: {model_type}")
 
 
@@ -81,11 +88,17 @@ class TrustPredictor:
     feature_names: Sequence[str] = QUALITY_FEATURE_NAMES
     random_state: int = 42
     estimator: Any = None
+    balance_classes: bool = True
+    scale_pos_weight: Optional[float] = None
 
     def __post_init__(self) -> None:
         self.feature_names = tuple(self.feature_names)
         if self.estimator is None:
-            self.estimator = _make_estimator(self.model_type, self.random_state)
+            self.estimator = _make_estimator(
+                self.model_type,
+                self.random_state,
+                scale_pos_weight=self.scale_pos_weight,
+            )
 
     def _as_matrix(self, X: Union[np.ndarray, Sequence[Sequence[float]]]) -> np.ndarray:
         arr = np.asarray(X, dtype=np.float32)
@@ -107,9 +120,33 @@ class TrustPredictor:
         y_arr = np.asarray(y).astype(int).ravel()
         if set(np.unique(y_arr)) - {0, 1}:
             raise ValueError("Labels must be binary {0, 1}")
+
+        # Rebuild XGBoost with scale_pos_weight from the observed label ratio
+        if self.balance_classes and self.model_type == "xgboost" and self.estimator is not None:
+            n_pos = max(int((y_arr == 1).sum()), 1)
+            n_neg = max(int((y_arr == 0).sum()), 1)
+            # Incorrect (0) is minority → weight positives down relative to negatives
+            # scale_pos_weight = n_neg / n_pos weights the positive class; for rare
+            # failures we want to emphasize class 0, so use sample weights instead.
+            sw = np.ones(len(y_arr), dtype=np.float64)
+            # Weight each class inversely to frequency
+            sw[y_arr == 0] = n_pos / (2.0 * n_neg)
+            sw[y_arr == 1] = n_neg / (2.0 * n_pos)
+            if sample_weight is not None:
+                sw = sw * np.asarray(sample_weight, dtype=np.float64)
+            sample_weight = sw
+            self.scale_pos_weight = float(n_neg / n_pos)
+
+        if self.balance_classes and self.model_type == "mlp" and sample_weight is None:
+            n_pos = max(int((y_arr == 1).sum()), 1)
+            n_neg = max(int((y_arr == 0).sum()), 1)
+            sw = np.ones(len(y_arr), dtype=np.float64)
+            sw[y_arr == 0] = n_pos / (2.0 * n_neg)
+            sw[y_arr == 1] = n_neg / (2.0 * n_pos)
+            sample_weight = sw
+
         fit_kwargs: dict[str, Any] = {}
         if sample_weight is not None:
-            # Pipelines need prefixed param names for sample_weight on final step
             if isinstance(self.estimator, Pipeline):
                 fit_kwargs["clf__sample_weight"] = sample_weight
             else:
@@ -157,6 +194,8 @@ class TrustPredictor:
                 "feature_names": list(self.feature_names),
                 "random_state": self.random_state,
                 "estimator": self.estimator,
+                "balance_classes": self.balance_classes,
+                "scale_pos_weight": self.scale_pos_weight,
             },
             path,
         )
@@ -169,6 +208,8 @@ class TrustPredictor:
             feature_names=payload["feature_names"],
             random_state=payload.get("random_state", 42),
             estimator=payload["estimator"],
+            balance_classes=payload.get("balance_classes", True),
+            scale_pos_weight=payload.get("scale_pos_weight"),
         )
         return obj
 
@@ -178,8 +219,13 @@ def train_trust_predictor(
     y: np.ndarray,
     model_type: ModelType = "xgboost",
     random_state: int = 42,
+    balance_classes: bool = True,
 ) -> TrustPredictor:
     """Convenience: construct, fit, and return a TrustPredictor."""
-    model = TrustPredictor(model_type=model_type, random_state=random_state)
+    model = TrustPredictor(
+        model_type=model_type,
+        random_state=random_state,
+        balance_classes=balance_classes,
+    )
     model.fit(X, y)
     return model

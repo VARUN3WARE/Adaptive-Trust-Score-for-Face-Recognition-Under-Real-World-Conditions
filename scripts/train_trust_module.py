@@ -45,6 +45,18 @@ def parse_args() -> argparse.Namespace:
         default="identity",
         help="identity = no person overlap between train/test (default)",
     )
+    parser.add_argument(
+        "--balance",
+        action="store_true",
+        default=True,
+        help="Balance rare incorrect labels (default: on)",
+    )
+    parser.add_argument(
+        "--no-balance",
+        action="store_false",
+        dest="balance",
+        help="Disable class imbalance weighting",
+    )
     return parser.parse_args()
 
 
@@ -92,7 +104,12 @@ def main() -> int:
         )
         n_id_train = n_id_test = None
 
-    model = TrustPredictor(model_type=model_type, feature_names=feature_names, random_state=args.seed)
+    model = TrustPredictor(
+        model_type=model_type,
+        feature_names=feature_names,
+        random_state=args.seed,
+        balance_classes=args.balance,
+    )
     model.fit(X_train, y_train)
     model.save(model_out)
 
@@ -101,6 +118,7 @@ def main() -> int:
     metrics = {
         "model_type": model_type,
         "split": args.split,
+        "balance_classes": args.balance,
         "n_train": int(len(y_train)),
         "n_test": int(len(y_test)),
         "n_identities_train": n_id_train,
