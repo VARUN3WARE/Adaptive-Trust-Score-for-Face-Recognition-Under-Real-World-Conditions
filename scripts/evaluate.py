@@ -76,6 +76,14 @@ def main() -> int:
 
     # Raw ArcFace prediction kept for baseline accuracy
     df["predicted_identity_raw"] = df["predicted_identity"]
+    if "face_found" in feature_names:
+        if "face_found" not in df.columns:
+            df["face_found"] = 1.0
+        df["face_found"] = df["face_found"].astype(float)
+    missing = [c for c in feature_names if c not in df.columns]
+    if missing:
+        print(f"[error] model expects missing columns: {missing}", file=sys.stderr)
+        return 1
     X = df[feature_names].fillna(0.0).to_numpy(dtype="float32")
     df["trust_score"] = model.predict_trust(X)
     df["accepted"] = df["trust_score"] >= threshold

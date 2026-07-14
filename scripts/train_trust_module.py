@@ -12,7 +12,7 @@ from sklearn.model_selection import train_test_split
 
 from _bootstrap import ROOT  # noqa: F401
 
-from src.feature_extraction import QUALITY_FEATURE_NAMES
+from src.feature_extraction import QUALITY_FEATURE_NAMES, TRUST_FEATURE_NAMES
 from src.trust_predictor import TrustPredictor
 from src.utils import identity_disjoint_split, load_config, resolve_path
 
@@ -46,6 +46,13 @@ def parse_args() -> argparse.Namespace:
         help="identity = no person overlap between train/test (default)",
     )
     parser.add_argument(
+        "--features",
+        type=str,
+        choices=["quality", "quality_sim", "sim_only"],
+        default=None,
+        help="Feature set: quality | quality_sim | sim_only (default: config)",
+    )
+    parser.add_argument(
         "--balance",
         action="store_true",
         default=True,
@@ -60,16 +67,30 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def resolve_feature_names(cfg: dict, args: argparse.Namespace) -> list[str]:
+    if args.features == "quality":
+        return list(QUALITY_FEATURE_NAMES)
+    if args.features == "sim_only":
+        return ["similarity"]
+    if args.features == "quality_sim":
+        return list(TRUST_FEATURE_NAMES)
+    return list(cfg.get("trust", {}).get("features", TRUST_FEATURE_NAMES))
+
+
 def main() -> int:
     args = parse_args()
     cfg = load_config(args.config)
     csv_path = resolve_path(args.features_csv)
     model_out = resolve_path(args.model_out)
     model_type = args.model_type or cfg.get("trust", {}).get("model_type", "xgboost")
-    feature_names = list(cfg.get("trust", {}).get("features", QUALITY_FEATURE_NAMES))
+    feature_names = resolve_feature_names(cfg, args)
 
     df = pd.read_csv(csv_path)
-    if "face_found" in df.columns:
+    if "face_found" in feature_names:
+        if "face_found" not in df.columns:
+            df["face_found"] = 1.0
+        df["face_found"] = df["face_found"].astype(float)
+    elif "face_found" in df.columns:
         df = df[df["face_found"] == True].copy()  # noqa: E712
 
     missing = [c for c in feature_names + ["label_correct"] if c not in df.columns]
@@ -118,6 +139,7 @@ def main() -> int:
     metrics = {
         "model_type": model_type,
         "split": args.split,
+        "feature_names": feature_names,
         "balance_classes": args.balance,
         "n_train": int(len(y_train)),
         "n_test": int(len(y_test)),

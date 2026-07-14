@@ -31,6 +31,12 @@ QUALITY_FEATURE_NAMES: tuple[str, ...] = (
     "entropy",
 )
 
+# Extended set used when fusing recognizer confidence with quality cues.
+TRUST_FEATURE_NAMES: tuple[str, ...] = QUALITY_FEATURE_NAMES + (
+    "similarity",
+    "face_found",
+)
+
 
 @dataclass
 class FaceObservation:
@@ -331,6 +337,7 @@ def build_gallery(
 
 __all__ = [
     "QUALITY_FEATURE_NAMES",
+    "TRUST_FEATURE_NAMES",
     "FaceObservation",
     "variance_of_laplacian",
     "brightness_score",

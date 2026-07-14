@@ -37,6 +37,8 @@ trust:
     - face_size_ratio
     - det_score
     - entropy
+    - similarity
+    - face_found
   reject_threshold: 0.5
 
 evaluation:
