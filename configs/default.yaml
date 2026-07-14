@@ -42,3 +42,4 @@ trust:
 evaluation:
   results_dir: results
   risk_coverage_steps: 50
+  reject_rates: [0.10, 0.20, 0.30, 0.40]

@@ -15,7 +15,7 @@ import pandas as pd
 
 from _bootstrap import ROOT  # noqa: F401
 
-from src.evaluation import evaluate_recognition_df
+from src.evaluation import evaluate_recognition_df, metrics_at_reject_rates
 from src.feature_extraction import QUALITY_FEATURE_NAMES
 from src.trust_predictor import TrustPredictor
 from src.utils import load_config, resolve_path
@@ -37,6 +37,13 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--threshold", type=float, default=None)
     parser.add_argument("--prefix", type=str, default="trust_eval")
+    parser.add_argument(
+        "--reject-rates",
+        type=float,
+        nargs="+",
+        default=None,
+        help="Fixed reject rates for paper tables (default: 0.1 0.2 0.3 0.4)",
+    )
     return parser.parse_args()
 
 
@@ -52,6 +59,9 @@ def main() -> int:
     )
     results_dir = resolve_path(cfg.get("evaluation", {}).get("results_dir", "results"))
     n_steps = int(cfg.get("evaluation", {}).get("risk_coverage_steps", 50))
+    reject_rates = args.reject_rates or cfg.get("evaluation", {}).get(
+        "reject_rates", [0.10, 0.20, 0.30, 0.40]
+    )
 
     if not csv_path.exists():
         print(f"[error] features CSV missing: {csv_path}", file=sys.stderr)
@@ -82,6 +92,11 @@ def main() -> int:
         prefix=args.prefix,
     )
     metrics["trust_threshold"] = threshold
+    metrics["at_reject_rate"] = metrics_at_reject_rates(
+        df,
+        score_col="trust_score",
+        reject_rates=reject_rates,
+    )
     print(json.dumps(metrics, indent=2))
     return 0
 
