@@ -14,7 +14,7 @@ Face recognition systems (e.g. ArcFace) often remain overconfident on blurry, po
 2. **Face detection** — RetinaFace via InsightFace
 3. **Feature extraction** — ArcFace embedding → identity prediction
 4. **Quality Assessment Module** — blur, brightness/contrast, head pose, face size, detection confidence, entropy
-5. **Trust Score Predictor** — lightweight classifier → P(correct recognition)
+5. **Trust Score Predictor** — lightweight classifier → P(correct recognition), optionally fused with match similarity
 
 ## Project Layout
 
@@ -23,13 +23,14 @@ Face recognition systems (e.g. ArcFace) often remain overconfident on blurry, po
 ├── configs/default.yaml
 ├── data/{raw,corrupted,embeddings,features}/
 ├── models/
-├── notebooks/
 ├── results/{figures,metrics}/
 ├── scripts/
 │   ├── generate_corrupted_dataset.py
 │   ├── build_trust_labels.py
 │   ├── train_trust_module.py
-│   └── evaluate.py
+│   ├── evaluate.py
+│   ├── compare_baselines.py
+│   └── report_by_corruption.py
 ├── src/
 │   ├── data_corruption.py
 │   ├── feature_extraction.py
@@ -49,48 +50,88 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### Dataset layout (already configured)
+### Dataset layout
 
-This repo expects the [Kaggle LFW dataset](https://www.kaggle.com/datasets/jessicali9530/lfw-dataset) extracted under `data/raw/`:
+[Kaggle LFW](https://www.kaggle.com/datasets/jessicali9530/lfw-dataset) deepfunneled under `data/raw/`:
 
 ```
-data/raw/
-  lfw-deepfunneled/lfw-deepfunneled/<Person_Name>/*.jpg
-  lfw_allnames.csv
-  pairs.csv
-  people.csv
-  ...
+data/raw/lfw-deepfunneled/lfw-deepfunneled/<Person_Name>/*.jpg
 ```
 
-`configs/default.yaml` points `raw_dir` at `data/raw/lfw-deepfunneled/lfw-deepfunneled`.
+`configs/default.yaml` already points `raw_dir` there.
 
 ## Experiment Workflow
 
 ```bash
-# 1) Artificially degrade images (blur, JPEG, rain/fog, low-light, noise)
-#    Full LFW (~13k images) can take a while; use --limit via a subset if needed.
+# 1) Corrupt images (blur, JPEG, rain/fog, low-light, noise)
 python scripts/generate_corrupted_dataset.py
 
-# 2) Run ArcFace, extract quality features, label correct/incorrect
+# 2) ArcFace + quality features + correctness labels
 python scripts/build_trust_labels.py --ctx-id -1   # CPU; use 0 for GPU
 
-# 3) Train Trust Score classifier (xgboost | random_forest | mlp)
-python scripts/train_trust_module.py --model-type xgboost
+# 3) Train Trust Score (identity-disjoint split; balanced classes)
+python scripts/train_trust_module.py --model-type xgboost --features quality_sim
 
-# 4) Biometric evaluation: Risk-Coverage, FAR/FRR/EER
-python scripts/evaluate.py
+# 4) FIQA-style evaluation: Risk-Coverage, ERC, FAR/FRR/EER, fixed reject rates
+python scripts/evaluate.py --threshold 0.99
+
+# 5) Baselines: similarity-only vs quality-trust vs quality+similarity
+python scripts/compare_baselines.py
+
+# 6) Per-corruption / pristine breakdown
+python scripts/report_by_corruption.py
 ```
 
-Outputs land in `results/figures/` and `results/metrics/`.
+Outputs: `results/figures/` and `results/metrics/`.
 
-## Evaluation Metrics
+## Evaluation Metrics (paper-style)
 
-- ArcFace accuracy on the corrupted set (baseline)
-- ArcFace + Trust gating accuracy on the accepted subset
-- Risk-Coverage curve (accuracy vs fraction retained)
-- FAR / FRR / EER of the trust accept/reject decision
+| Metric | Meaning |
+|---|---|
+| Baseline ArcFace accuracy | Ungated identification accuracy |
+| Risk–Coverage | Accuracy vs fraction of images accepted ([SelectiveNet](http://proceedings.mlr.press/v97/geifman19a.html)-style) |
+| **Error-vs-Reject (ERC)** | Error vs % rejected — [FaceQnet](https://ar5iv.labs.arxiv.org/html/2006.03298) / NIST FRVT-QA style |
+| Fixed reject rates | Acc/error at 10% / 20% / 30% / 40% reject |
+| FAR / FRR / EER | Trust accept/reject decision errors |
+| Baseline compare | similarity-only vs quality vs quality+similarity |
 
+## Results snapshot (LFW deepfunneled + corruptions)
+
+From the full labeled table (~26.5k pristine+corrupted probes):
+
+| Quantity | Value |
+|---|---|
+| Baseline ArcFace accuracy | ~92.2% |
+| Risk–Coverage | ~**100% accuracy at ~78% coverage** (reject lowest-trust) |
+| Practical gate | `--threshold 0.99` → ~60% coverage, ~**99.8%** acc on accepted |
+| EER (trust decision) | ~8.8% |
+
+Re-train after pulling feature updates:
+
+```bash
+python scripts/train_trust_module.py --features quality_sim --model-type xgboost
+python scripts/evaluate.py --threshold 0.99
+python scripts/compare_baselines.py
+python scripts/report_by_corruption.py
+```
+
+## Related work
+
+- Hernandez-Ortega et al., **FaceQnet** — quality as predicted recognition utility  
+- Meng et al., **MagFace** (CVPR 2021) — embedding magnitude as quality  
+- Terhörst et al., **SER-FIQ** — stochastic embedding robustness  
+- Ou et al., **SDD-FIQA** (CVPR 2021) — similarity distribution distance  
+- Geifman & El-Yaniv, **SelectiveNet** / risk–coverage selective classification  
+
+## Status
+
+- [x] Corruption suite + LFW run
+- [x] Quality features + ArcFace labeling
+- [x] Trust predictor (RF / XGBoost / MLP)
+- [x] ERC, Risk–Coverage, FAR/FRR/EER
+- [x] Similarity baselines + identity-disjoint / balanced training
+- [x] Per-corruption reporting
 
 ## License
 
-Research / academic use. Cite InsightFace and the LFW / CelebA dataset papers when publishing results.
+Research / academic use. Cite InsightFace and the LFW dataset papers when publishing results.
