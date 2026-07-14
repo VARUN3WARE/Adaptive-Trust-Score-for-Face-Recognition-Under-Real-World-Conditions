@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any, Optional, Sequence, Union
 
 import numpy as np
 import yaml
@@ -61,3 +61,35 @@ def identity_from_path(path: PathLike, depth: int = 1) -> str:
     if len(parts) <= depth:
         raise ValueError(f"Cannot infer identity from path: {path}")
     return parts[-(depth + 1)]
+
+
+def identity_disjoint_split(
+    identities: Sequence[str],
+    test_size: float = 0.2,
+    random_state: int = 42,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Split row indices so no identity appears in both train and test.
+
+    ``identities`` is length-N (one label per row). Returns boolean masks
+    ``(train_mask, test_mask)``.
+    """
+    from sklearn.model_selection import train_test_split
+
+    identities = np.asarray(identities)
+    n = len(identities)
+    unique = np.unique(identities)
+    if len(unique) < 2:
+        raise ValueError("Need at least 2 identities for an identity-disjoint split")
+
+    id_train, id_test = train_test_split(
+        unique,
+        test_size=test_size,
+        random_state=random_state,
+    )
+    test_set = set(id_test.tolist())
+    test_mask = np.array([i in test_set for i in identities], dtype=bool)
+    train_mask = ~test_mask
+    if train_mask.sum() == 0 or test_mask.sum() == 0:
+        raise ValueError("Identity split produced an empty partition")
+    return train_mask, test_mask
