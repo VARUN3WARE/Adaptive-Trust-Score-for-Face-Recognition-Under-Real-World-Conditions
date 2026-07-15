@@ -21,6 +21,7 @@ Face recognition systems (e.g. ArcFace) often remain overconfident on blurry, po
 ```
 .
 ├── configs/default.yaml
+├── docs/related_work.md
 ├── data/{raw,corrupted,embeddings,features}/
 ├── models/
 ├── results/{figures,metrics}/
@@ -30,14 +31,10 @@ Face recognition systems (e.g. ArcFace) often remain overconfident on blurry, po
 │   ├── train_trust_module.py
 │   ├── evaluate.py
 │   ├── compare_baselines.py
-│   └── report_by_corruption.py
+│   ├── run_ablation.py
+│   ├── report_by_corruption.py
+│   └── demo_trust.py
 ├── src/
-│   ├── data_corruption.py
-│   ├── feature_extraction.py
-│   ├── face_pipeline.py
-│   ├── trust_predictor.py
-│   ├── evaluation.py
-│   └── utils.py
 ├── requirements.txt
 └── README.md
 ```
@@ -58,79 +55,60 @@ pip install -r requirements.txt
 data/raw/lfw-deepfunneled/lfw-deepfunneled/<Person_Name>/*.jpg
 ```
 
-`configs/default.yaml` already points `raw_dir` there.
-
 ## Experiment Workflow
 
 ```bash
-# 1) Corrupt images (blur, JPEG, rain/fog, low-light, noise)
+# 1) Corrupt images
 python scripts/generate_corrupted_dataset.py
 
-# 2) ArcFace + quality features + correctness labels
-python scripts/build_trust_labels.py --ctx-id -1   # CPU; use 0 for GPU
+# 2) ArcFace labels + quality features
+python scripts/build_trust_labels.py --ctx-id -1
 
-# 3) Train Trust Score (identity-disjoint split; balanced classes)
-python scripts/train_trust_module.py --model-type xgboost --features quality_sim
+# 3) Train Trust Score (identity-disjoint; quality + similarity)
+python scripts/train_trust_module.py --features quality_sim --model-type xgboost
 
-# 4) FIQA-style evaluation: Risk-Coverage, ERC, FAR/FRR/EER, fixed reject rates
+# 4) FIQA-style eval (Risk-Coverage, ERC, FAR/FRR, fixed reject rates)
 python scripts/evaluate.py --threshold 0.99
 
-# 5) Baselines: similarity-only vs quality-trust vs quality+similarity
-python scripts/compare_baselines.py
+# 5) One-command feature ablation (quality / sim_only / quality_sim)
+python scripts/run_ablation.py
 
-# 6) Per-corruption / pristine breakdown
+# 6) Per-corruption breakdown
 python scripts/report_by_corruption.py
+
+# 7) Single-image demo (builds/loads gallery cache on first run)
+python scripts/demo_trust.py data/raw/lfw-deepfunneled/lfw-deepfunneled/Aaron_Eckhart/Aaron_Eckhart_0001.jpg \
+  --threshold 0.6 --ctx-id -1
 ```
 
-Outputs: `results/figures/` and `results/metrics/`.
-
-## Evaluation Metrics (paper-style)
-
-| Metric | Meaning |
-|---|---|
-| Baseline ArcFace accuracy | Ungated identification accuracy |
-| Risk–Coverage | Accuracy vs fraction of images accepted ([SelectiveNet](http://proceedings.mlr.press/v97/geifman19a.html)-style) |
-| **Error-vs-Reject (ERC)** | Error vs % rejected — [FaceQnet](https://ar5iv.labs.arxiv.org/html/2006.03298) / NIST FRVT-QA style |
-| Fixed reject rates | Acc/error at 10% / 20% / 30% / 40% reject |
-| FAR / FRR / EER | Trust accept/reject decision errors |
-| Baseline compare | similarity-only vs quality vs quality+similarity |
-
-## Results snapshot (LFW deepfunneled + corruptions)
-
-From the full labeled table (~26.5k pristine+corrupted probes):
+## Results snapshot (LFW + corruptions, quality_sim model)
 
 | Quantity | Value |
 |---|---|
-| Baseline ArcFace accuracy | ~92.2% |
-| Risk–Coverage | ~**100% accuracy at ~78% coverage** (reject lowest-trust) |
-| Practical gate | `--threshold 0.99` → ~60% coverage, ~**99.8%** acc on accepted |
-| EER (trust decision) | ~8.8% |
+| Baseline ArcFace accuracy | **92.2%** |
+| Trust ROC-AUC (identity-disjoint test) | **~0.95** |
+| EER (trust accept/reject) | **~3.3%** (thr ≈ 0.60) |
+| Gate `--threshold 0.99` | **~99.9%** acc on accepted set |
+| ERC @ 10% reject | **~99.7%** retained accuracy |
+| vs similarity-only @ 10% reject | ~99.0% (trust / fused better) |
 
-Re-train after pulling feature updates:
+Hardest corruption in our stress test: **rain** (many missed detections / near-zero trust).
 
-```bash
-python scripts/train_trust_module.py --features quality_sim --model-type xgboost
-python scripts/evaluate.py --threshold 0.99
-python scripts/compare_baselines.py
-python scripts/report_by_corruption.py
-```
+Plots: `results/figures/trust_eval_*.png`, `baseline_compare_erc.png`, `ablation_erc.png`.
 
 ## Related work
 
-- Hernandez-Ortega et al., **FaceQnet** — quality as predicted recognition utility  
-- Meng et al., **MagFace** (CVPR 2021) — embedding magnitude as quality  
-- Terhörst et al., **SER-FIQ** — stochastic embedding robustness  
-- Ou et al., **SDD-FIQA** (CVPR 2021) — similarity distribution distance  
-- Geifman & El-Yaniv, **SelectiveNet** / risk–coverage selective classification  
+See [docs/related_work.md](docs/related_work.md) for FaceQnet, MagFace, SER-FIQ, SDD-FIQA, SelectiveNet, and how this project differs.
 
 ## Status
 
 - [x] Corruption suite + LFW run
 - [x] Quality features + ArcFace labeling
-- [x] Trust predictor (RF / XGBoost / MLP)
-- [x] ERC, Risk–Coverage, FAR/FRR/EER
-- [x] Similarity baselines + identity-disjoint / balanced training
+- [x] Trust predictor + identity-disjoint / balanced training
+- [x] ERC, Risk–Coverage, FAR/FRR/EER, fixed reject rates
+- [x] Feature ablation CLI
 - [x] Per-corruption reporting
+- [x] Single-image demo
 
 ## License
 
