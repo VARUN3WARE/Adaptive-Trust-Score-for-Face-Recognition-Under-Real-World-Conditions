@@ -50,7 +50,8 @@ def parse_args() -> argparse.Namespace:
         type=str,
         choices=["quality", "quality_sim", "sim_only"],
         default=None,
-        help="Feature set: quality | quality_sim | sim_only (default: config)",
+        help="Feature set: quality | quality_sim | sim_only (default: config). "
+        "For a full ablation table use: python scripts/run_ablation.py",
     )
     parser.add_argument(
         "--balance",
