@@ -120,11 +120,12 @@ class FaceRecognitionPipeline:
         self.set_gallery(gallery)
         return gallery
 
-    def _predict_trust(self, quality: dict[str, float]) -> Optional[float]:
+    def _predict_trust(self, features: dict[str, float]) -> Optional[float]:
         if self.trust_model is None:
             return None
+        names = list(getattr(self.trust_model, "feature_names", QUALITY_FEATURE_NAMES))
         x = np.asarray(
-            [[float(quality.get(n, 0.0)) for n in QUALITY_FEATURE_NAMES]],
+            [[float(features.get(n, 0.0)) for n in names]],
             dtype=np.float32,
         )
         if hasattr(self.trust_model, "predict_trust"):
@@ -158,22 +159,33 @@ class FaceRecognitionPipeline:
 
         obs = self.encoder.primary_face(image)
         if obs is None:
-            result = RecognitionResult(
+            trust_feats = {n: 0.0 for n in QUALITY_FEATURE_NAMES}
+            trust_feats["similarity"] = 0.0
+            trust_feats["face_found"] = 0.0
+            trust = self._predict_trust(trust_feats)
+            accepted = None
+            if apply_trust_gate and trust is not None:
+                accepted = bool(trust >= self.trust_threshold)
+            return RecognitionResult(
                 image_path=path_str,
                 predicted_identity=None,
                 similarity=0.0,
                 ground_truth=ground_truth,
                 correct=False if ground_truth is not None else None,
+                trust_score=trust,
+                accepted=accepted,
                 face_found=False,
             )
-            return result
 
         pred_id, sim = match_embedding(
             obs.embedding,
             self.gallery,
             threshold=self.similarity_threshold,
         )
-        trust = self._predict_trust(obs.quality)
+        trust_feats = dict(obs.quality)
+        trust_feats["similarity"] = float(sim)
+        trust_feats["face_found"] = 1.0
+        trust = self._predict_trust(trust_feats)
         accepted: Optional[bool] = None
         final_pred = pred_id
         if apply_trust_gate and trust is not None:
