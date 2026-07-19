@@ -33,6 +33,7 @@ Face recognition systems (e.g. ArcFace) often remain overconfident on blurry, po
 │   ├── compare_baselines.py
 │   ├── run_ablation.py
 │   ├── report_by_corruption.py
+│   ├── plot_corruption_summary.py
 │   └── demo_trust.py
 ├── src/
 ├── requirements.txt
@@ -76,7 +77,10 @@ python scripts/run_ablation.py
 # 6) Per-corruption breakdown
 python scripts/report_by_corruption.py
 
-# 7) Single-image demo (builds/loads gallery cache on first run)
+# 7) Per-corruption summary figure (baseline vs trust-gated accuracy)
+python scripts/plot_corruption_summary.py --reject-rate-label 20%
+
+# 8) Single-image demo (builds/loads gallery cache on first run)
 python scripts/demo_trust.py data/raw/lfw-deepfunneled/lfw-deepfunneled/Aaron_Eckhart/Aaron_Eckhart_0001.jpg \
   --threshold 0.6 --ctx-id -1
 ```
@@ -92,9 +96,11 @@ python scripts/demo_trust.py data/raw/lfw-deepfunneled/lfw-deepfunneled/Aaron_Ec
 | ERC @ 10% reject | **~99.7%** retained accuracy |
 | vs similarity-only @ 10% reject | ~99.0% (trust / fused better) |
 
-Hardest corruption in our stress test: **rain** (many missed detections / near-zero trust).
+Plots: `results/figures/trust_eval_*.png`, `baseline_compare_erc.png`, `ablation_erc.png`, `corruption_summary.png`.
 
-Plots: `results/figures/trust_eval_*.png`, `baseline_compare_erc.png`, `ablation_erc.png`.
+### Limitations (rain)
+
+Trust gating recovers near-ceiling accuracy under blur, JPEG, fog, low-light, and noise (e.g. Gaussian noise: **87.8% → 99.7%** retained at 20% reject). **Rain is the failure case**: baseline accuracy collapses to ~31.7% and only reaches ~39.7% even after rejecting 20%. The trust model *does* assign near-zero scores to almost all rain images (so they are rejected first in the global pool — the desired behavior), but the synthetic rain streaks destroy so much identity information that recognition cannot be salvaged within the rain subset. Softening the rain severity (fewer/thinner streaks) is left as future work.
 
 ## Related work
 
